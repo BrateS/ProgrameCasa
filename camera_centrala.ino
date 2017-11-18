@@ -3,6 +3,8 @@
 #include <Wire.h>
 #include <Ethernet.h>
 #include <EthernetUdp.h>
+#include <avr/wdt.h>
+
 #define RELAYS 8
 #define DEVICES 8
 //#define DEBUG
@@ -38,6 +40,7 @@ long interval = 420000;           // interval at which to read (milliseconds)
 void setup() {
   Serial.begin(9600);
   sensors.begin();
+  wdt_enable(WDTO_8S);// setat la 8 secunde 
   Ethernet.begin( mac, ip);
   Udp.begin(port);
   delay(1500);
@@ -87,6 +90,7 @@ void loop() {
      }
   }
   if(packetSize)memset(packetBuffer, 0, UDP_TX_PACKET_MAX_SIZE);
+  wdt_reset();
 }
 void setRelays(String datReq){
   int i=5;
