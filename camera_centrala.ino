@@ -4,7 +4,8 @@
 #include <Ethernet.h>
 #include <EthernetUdp.h>
 #define RELAYS 8
-#define DEBUG
+#define DEVICES 8
+//#define DEBUG
 EthernetClient client;
 byte mac[] ={0x90, 0xA2, 0xDA, 0x0f, 0x25, 0xE7};
 IPAddress ip(192, 168, 2, 204);
@@ -12,13 +13,30 @@ short port=5000;
 IPAddress server(192, 168, 2, 55);
 String datReq;
 EthernetUDP Udp;
-bool relayState[RELAYS];
-int pinRelay[RELAYS];
+char packetBuffer[15];
+#define ONE_WIRE_BUS 5
+#define TEMPERATURE_PRECISION 12
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+bool relayState[8];
+float t[8];
+int pinRelay[8];
+//==================ADRESE SENZORI============================
+DeviceAddress t0 = { 0x28, 0xA9, 0xE3, 0x34, 0x04, 0x00, 0x00, 0x98 };// solar 110 
+DeviceAddress t1 = { 0x28, 0xE6, 0x5E, 0x34, 0x04, 0x00, 0x00, 0x6A };// solar 220
+DeviceAddress t2 = { 0x28, 0x90, 0xA8, 0xFF, 0x05, 0x00, 0x00, 0x7C };// solar apa
+DeviceAddress t3 = { 0x28, 0xD5, 0x0B, 0x35, 0x04, 0x00, 0x00, 0x16 };// puffer 100
+DeviceAddress t4 = { 0X28, 0X21, 0XBC, 0XD0, 0X04, 0X00, 0X00, 0X6E };// puffer 75
+DeviceAddress t5 = { 0x28, 0xF0, 0x4B, 0xFD, 0x05, 0x00, 0x00, 0x2C };// puffer 50
+DeviceAddress t6 = { 0x28, 0x03, 0x7A, 0xFE, 0x05, 0x00, 0x00, 0xC6 };// pufer 25
+DeviceAddress t7 = { 0x28, 0x6D ,0x5A ,0x34 ,0x04 , 0x00 , 0x00 , 0x67 };// boiler
+//====================================================================================================
+
+long previousMillis = 0;        // will store last time values were read
+long interval = 420000;           // interval at which to read (milliseconds)
 
 void setup() {
-  #ifdef DEBUG
   Serial.begin(9600);
-  #endif
   sensors.begin();
   Ethernet.begin( mac, ip);
   Udp.begin(port);
@@ -29,15 +47,14 @@ void setup() {
   for(int i=0;i<8;i++){
     pinMode(pinRelay[i], OUTPUT);
     digitalWrite(pinRelay[i], HIGH);
+    
   }
+  readData();
   #ifdef DEBUG
-  Serial.println("");
-  Serial.println("Setup done.");
   printConfig();
-  #endif
-  #ifdef DEBUG
   printData();
   #endif
+  send_data();
 }
 float getTemp(DeviceAddress deviceAddress)
 {
@@ -46,13 +63,13 @@ float getTemp(DeviceAddress deviceAddress)
 void loop() {
   unsigned long currentMillis = millis();
   if(currentMillis - previousMillis > interval) {
-    // save the last time
     previousMillis = currentMillis;
-    getTemps();
+    readData();
     #ifdef DEBUG
     printData();
     #endif
-  }
+    send_data();
+   }
   int packetSize =Udp.parsePacket();
   if(packetSize) {
     Udp.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE);
@@ -62,20 +79,21 @@ void loop() {
     Serial.print("PacketSize=");
     Serial.println(packetSize);
     #endif
-    if (datReq=="data")send_data();
-    else if(datReq.indexOf("releu")>=0)setRelays(datReq);
-    else {
-      #ifdef DEBUG
-      Serial.println("This is not a valid command!");
-      #endif
-    }
+    if(datReq.indexOf("releu")>=0)setRelays(datReq);
+      else {
+        #ifdef DEBUG
+        Serial.println("This is not a valid command!");
+        #endif
+     }
   }
-  memset(packetBuffer, 0, UDP_TX_PACKET_MAX_SIZE);
+  if(packetSize)memset(packetBuffer, 0, UDP_TX_PACKET_MAX_SIZE);
 }
 void setRelays(String datReq){
   int i=5;
       while(i){
-        if(i-5>7)break;//string prea mare, nu am atatea relee
+        if(i-5>RELAYS-1){
+          break;//string prea mare, nu am atatea relee
+        }
         if(datReq.charAt(i)!='0'&&datReq.charAt(i)!='1')break;
         if(datReq.charAt(i)=='1'){
           relayState[i-5]=true;
@@ -90,11 +108,8 @@ void setRelays(String datReq){
 }
 void send_data(){
   if(client.connect(server, 80)) {
-      #ifdef DEBUG
-      Serial.println("-> Connected");
-      #endif
       // Make a HTTP request:
-      client.print( "GET /add_data_camera_centrala.php?");
+      client.print( "GET /add_data.php?");
       for(int i=0;i<DEVICES;i++){
         client.print("temp");
         client.print(i+1);
@@ -120,14 +135,11 @@ void send_data(){
     }
     else {
       // you didn't get a connection to the server:
-      #ifdef DEBUG
-      Serial.println("--> connection failed/n");
-      #endif
     }
 }
-void getTemps(void){
+void readData(void){
   sensors.requestTemperatures();
-  delay(800);
+  delay(1000);
   t[0]=getTemp(t0);
   t[1]=getTemp(t1);
   t[2]=getTemp(t2);
